@@ -1,39 +1,35 @@
-name: Build from ZIP
+name: Build
 
 on:
   push:
-    paths:
-      - '*.zip'
   workflow_dispatch:
 
 jobs:
   build:
-    name: Extract & Build
+    name: Build Mod
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Find zip file
-        id: findzip
+      - name: Find and extract zip
         run: |
-          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
-          echo "zip=$ZIP" >> $GITHUB_OUTPUT
-          echo "Found zip: $ZIP"
+          ZIP=$(find . -maxdepth 2 -name "*.zip" | head -1)
+          if [ -n "$ZIP" ]; then
+            echo "Extracting $ZIP"
+            unzip -o "$ZIP"
+          fi
 
-      - name: Extract zip
-        if: steps.findzip.outputs.zip != ''
+      - name: Find gradlew
+        id: find
         run: |
-          unzip -o "${{ steps.findzip.outputs.zip }}"
-          ls -la
-
-      - name: Find project root
-        id: findroot
-        run: |
-          ROOT=$(find . -maxdepth 3 -name "build.gradle.kts" -not -path "./.gradle/*" -not -path "./.github/*" | head -1 | xargs dirname)
-          echo "root=$ROOT" >> $GITHUB_OUTPUT
-          echo "Project root: $ROOT"
+          GRADLEW=$(find . -maxdepth 4 -name "gradlew" -not -path "./.gradle/*" | head -1)
+          DIR=$(dirname "$GRADLEW")
+          echo "dir=$DIR" >> $GITHUB_OUTPUT
+          echo "Found gradlew at: $DIR"
 
       - name: Set up JDK 8
         uses: actions/setup-java@v4
@@ -45,17 +41,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix gradlew permissions
-        run: |
-          chmod +x ${{ steps.findroot.outputs.root }}/gradlew || true
+      - name: Make gradlew executable
+        run: chmod +x "${{ steps.find.outputs.dir }}/gradlew"
 
       - name: Build
-        working-directory: ${{ steps.findroot.outputs.root }}
+        working-directory: ${{ steps.find.outputs.dir }}
         run: ./gradlew build --no-daemon
 
-      - name: Upload Build Artifacts
+      - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
-          name: OverflowAnimations-Jar
-          path: ${{ steps.findroot.outputs.root }}/versions/**/build/libs/*.jar
+          name: OverflowAnimations
+          path: ${{ steps.find.outputs.dir }}/versions/**/build/libs/*.jar
           
